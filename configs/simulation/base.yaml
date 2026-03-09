@@ -1,0 +1,10 @@
+simulation:
+  wavelength_m: 5.32e-7
+  sim_px_m: 3.5e-7
+  sim_grid_size: 3000
+  camera_pixel_pitch_m: 1.85e-6
+  bandlimit_factor: 0.5
+
+propagation:
+  z_meta_to_sensor_m: 0.015
+  z_object_to_meta_m: 0.020

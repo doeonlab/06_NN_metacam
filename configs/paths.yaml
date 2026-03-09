@@ -1,0 +1,6 @@
+project_root: .
+source_dir: src
+assets_dir: assets
+data_dir: assets/data
+notebooks_dir: notebooks
+outputs_dir: outputs

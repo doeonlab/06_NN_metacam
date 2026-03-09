@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Runtime outputs
+outputs/**
+!outputs/.gitkeep
+!outputs/experiments/
+!outputs/experiments/.gitkeep
+!outputs/checkpoints/
+!outputs/checkpoints/.gitkeep
+!outputs/figures/
+!outputs/figures/.gitkeep

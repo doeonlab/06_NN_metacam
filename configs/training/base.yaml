@@ -1,0 +1,12 @@
+training:
+  seed: 42
+  batch_size: 1
+  learning_rate: 1.0e-3
+  max_iterations: 1000
+  device_priority: [mps, cuda, cpu]
+
+loss:
+  weights:
+    mse: 1.0
+    tv: 0.0
+    npcc: 0.0
