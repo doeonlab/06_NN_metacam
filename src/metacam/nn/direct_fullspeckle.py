@@ -18,6 +18,10 @@ def _zscore(x: torch.Tensor) -> torch.Tensor:
     return (x - mean) / std
 
 
+def _complex_angle(field: torch.Tensor) -> torch.Tensor:
+    return torch.atan2(field.imag, field.real)
+
+
 class FullSpeckleDirectPhaseNet(ReconstructionModel):
     """Full-speckle direct network with sensor-phase prediction and one-shot backprop."""
 
@@ -70,7 +74,7 @@ class FullSpeckleDirectPhaseNet(ReconstructionModel):
                 object_field.real,
                 object_field.imag,
                 object_field.abs(),
-                torch.angle(object_field),
+                _complex_angle(object_field),
             ],
             dim=1,
         )
@@ -84,4 +88,3 @@ class FullSpeckleDirectPhaseNet(ReconstructionModel):
 
     def forward(self, measurement: torch.Tensor) -> torch.Tensor:
         return self.forward_with_aux(measurement)["phase"]
-

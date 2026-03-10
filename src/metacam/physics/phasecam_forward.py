@@ -40,6 +40,10 @@ def _wrap_phase(phase: torch.Tensor) -> torch.Tensor:
     return torch.remainder(phase, 2 * math.pi)
 
 
+def _complex_angle(field: torch.Tensor) -> torch.Tensor:
+    return torch.atan2(field.imag, field.real)
+
+
 def _bounded_phase(phase: torch.Tensor) -> torch.Tensor:
     return math.pi * torch.tanh(phase / math.pi)
 
@@ -49,7 +53,7 @@ def _resize_wrapped_phase(phase: torch.Tensor, size: tuple[int, int]) -> torch.T
     real = F.interpolate(complex_phase.real, size=size, mode="bilinear", antialias=True)
     imag = F.interpolate(complex_phase.imag, size=size, mode="bilinear", antialias=True)
     resized = torch.complex(real, imag)
-    return torch.angle(resized)
+    return _complex_angle(resized)
 
 
 @dataclass(frozen=True)

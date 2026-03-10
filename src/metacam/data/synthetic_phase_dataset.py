@@ -16,6 +16,10 @@ from torch.utils.data import Dataset
 from metacam.physics.phasecam_forward import PhaseCamForwardModel
 
 
+def _complex_angle(field: torch.Tensor) -> torch.Tensor:
+    return torch.atan2(field.imag, field.real)
+
+
 def _gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
     coords = torch.arange(kernel_size, dtype=torch.float32) - (kernel_size - 1) / 2
     yy, xx = torch.meshgrid(coords, coords, indexing="ij")
@@ -118,7 +122,7 @@ class SyntheticPhaseDataset(Dataset):
                 sensor_field = self.forward_model.forward_sensor_field(phase_batch)
                 intensity = self.forward_model.downsample_sensor(sensor_field)[0].cpu()
                 camera_field = self.forward_model.downsample_sensor_complex(sensor_field)[0].cpu()
-                camera_phase = torch.angle(camera_field)
+                camera_phase = _complex_angle(camera_field)
                 camera_real = camera_field.real
                 camera_imag = camera_field.imag
             intensity = self._apply_noise(intensity, generator)
