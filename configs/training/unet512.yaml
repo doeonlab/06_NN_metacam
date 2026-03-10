@@ -1,0 +1,59 @@
+experiment:
+  name: unet512
+  model_type: unet
+  simulation_config: configs/simulation/test512.yaml
+  seed: 42
+  checkpoint_dir: outputs/checkpoints/unet512
+  output_dir: outputs/experiments/unet512
+
+device:
+  priority: [mps, cuda, cpu]
+
+data:
+  seed: 42
+  train_samples: 2000
+  val_samples: 200
+  test_samples: 200
+  batch_size: 4
+  eval_batch_size: 1
+  num_workers: 0
+  phase_range_rad: 3.141592653589793
+  pattern_types: [gaussian_field, blobs, bandlimited, edges, local_images]
+  use_local_images: true
+  local_image_dir: assets/data/Target
+  materialize_measurements: true
+  cache_train: false
+  cache_val: false
+  cache_test: false
+  noise_mode: none
+  poisson_peak_count: 50000.0
+  gaussian_noise_std: 0.0
+
+model:
+  base_channels: 32
+  depth: 4
+
+optimization:
+  epochs: 10
+  learning_rate: 2.5e-4
+  weight_decay: 1.0e-4
+  grad_clip_norm: 1.0
+  early_stopping_patience: 4
+
+loss:
+  phase: 1.0
+  measurement: 0.10
+  tv: 5.0e-5
+
+evaluation:
+  iterative_steps: 40
+  iterative_lr: 0.05
+  iterative_tv_weight: 1.0e-4
+  refinement_steps: 5
+  refinement_lr: 0.01
+
+quick_run:
+  train_samples: 64
+  val_samples: 16
+  test_samples: 16
+  epochs: 2

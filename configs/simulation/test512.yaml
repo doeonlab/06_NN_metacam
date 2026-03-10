@@ -1,0 +1,49 @@
+baseline:
+  sim_grid_size_px: 5713
+  sim_pixel_pitch_m: 3.5e-7
+  camera_pixel_pitch_m: 1.85e-6
+  wavelength_m: 5.32e-7
+  aperture_width_m: 1.0e-3
+  z_meta_to_sensor_m: 6.3e-3
+  z_object_to_meta_m: 4.0e-4
+  sasm_bandlimit_factor: 0.5
+  widthmap_file: assets/data/Fab/B17/0.6NA_random_70_1_300_1mm_mapped_width.mat
+  lut_file: assets/data/Fab/B17/bayesLUT_MSE_v6.3_nonoverlap.mat
+  target_file: assets/data/Target/usafimage.png
+  measurement_crop_px: 3000
+  meta_pixel_count_px: 2856
+  object_support_px: 2857
+
+reduced:
+  name: test512
+  scale_factor: 0.08962016453702083
+  sim_grid_size_px: 512
+  sim_pixel_pitch_m: 3.5e-7
+  camera_pixel_pitch_m: 1.85e-6
+  wavelength_m: 5.32e-7
+  aperture_width_px: 256
+  aperture_width_m: 8.96e-5
+  object_support_px: 256
+  object_support_width_m: 8.96e-5
+  meta_pixel_count_px: 256
+  meta_active_width_m: 8.96e-5
+  z_meta_to_sensor_m: 5.646070365832313e-4
+  z_object_to_meta_m: 3.5848065814808335e-5
+  sasm_bandlimit_factor: 0.5
+  sensor_full_size_px: 463
+  measurement_window_px: 463
+  sensor_crop_strategy: full_downsampled
+  phase_file: assets/data/Fab/generated/test512_gaussian_phase_seed1234.npz
+  widthmap_file: assets/data/Fab/B17/0.6NA_random_70_1_300_1mm_mapped_width.mat
+  lut_file: assets/data/Fab/B17/bayesLUT_MSE_v6.3_nonoverlap.mat
+  meta_phase_seed: 1234
+  mask_mean_rad: 3.141592653589793
+  mask_std_rad: 1.5707963267948966
+
+mask:
+  phase_file: assets/data/Fab/generated/test512_gaussian_phase_seed1234.npz
+  seed: 1234
+  distribution:
+    kind: normal_wrapped
+    mean_rad: 3.141592653589793
+    std_rad: 1.5707963267948966

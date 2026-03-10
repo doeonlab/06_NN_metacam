@@ -9,9 +9,12 @@ from metacam.data.io import (
     load_mat_file,
     load_matfile,
 )
+from metacam.data.synthetic_phase_dataset import SyntheticPhaseDataset, SyntheticPhaseDatasetConfig
 
 __all__ = [
     "Load_data",
+    "SyntheticPhaseDataset",
+    "SyntheticPhaseDatasetConfig",
     "batch_generator_2d",
     "data_augmentation",
     "data_flipping",
