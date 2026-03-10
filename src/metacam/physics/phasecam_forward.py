@@ -509,6 +509,71 @@ class PhaseCamForwardModel(nn.Module):
             amplitude = torch_crop_center(amplitude, self.config.measurement_window_px)
         return amplitude
 
+    def downsample_sensor_complex(self, sensor_field: torch.Tensor) -> torch.Tensor:
+        real = F.interpolate(
+            sensor_field.real,
+            scale_factor=self.sensor_scale_factor,
+            mode="bilinear",
+            antialias=self.use_antialias,
+        )
+        imag = F.interpolate(
+            sensor_field.imag,
+            scale_factor=self.sensor_scale_factor,
+            mode="bilinear",
+            antialias=self.use_antialias,
+        )
+        camera_field = torch.complex(real, imag)
+        if self.config.measurement_window_px < camera_field.shape[-1]:
+            camera_field = torch_crop_center(camera_field, self.config.measurement_window_px)
+        return camera_field
+
+    def build_camera_field(self, camera_amplitude: torch.Tensor, camera_phase: torch.Tensor) -> torch.Tensor:
+        return torch.polar(camera_amplitude.to(self.aperture_obj.device), camera_phase.to(self.aperture_obj.device))
+
+    def upsample_camera_field(self, camera_field: torch.Tensor) -> torch.Tensor:
+        if camera_field.shape[-1] != self.sensor_full_size_px or camera_field.shape[-2] != self.sensor_full_size_px:
+            camera_field = torch_pad_center(
+                camera_field,
+                (self.sensor_full_size_px, self.sensor_full_size_px),
+                padval=0.0,
+            )
+        real = F.interpolate(
+            camera_field.real,
+            size=(self.asmt.ydim, self.asmt.xdim),
+            mode="bilinear",
+            antialias=self.use_antialias,
+        )
+        imag = F.interpolate(
+            camera_field.imag,
+            size=(self.asmt.ydim, self.asmt.xdim),
+            mode="bilinear",
+            antialias=self.use_antialias,
+        )
+        return torch.complex(real, imag)
+
+    def adjoint_sasm_sensor(self, sensor_field: torch.Tensor) -> torch.Tensor:
+        sensor_field = torch.fft.ifftshift(sensor_field, dim=(-2, -1))
+        sensor_field = torch.fft.ifft2(sensor_field, norm="ortho")
+        sensor_field = torch.fft.fftshift(sensor_field, dim=(-2, -1))
+        sensor_field = sensor_field * torch.conj(self.q_1)
+        sensor_field = torch.fft.fft2(sensor_field, norm="ortho")
+        sensor_field = sensor_field * torch.conj(self.delta_h)
+        sensor_field = torch.fft.ifft2(sensor_field, norm="ortho")
+        return sensor_field
+
+    def backproject_camera_field(
+        self,
+        camera_field: torch.Tensor,
+        crop_to_object: bool = True,
+    ) -> torch.Tensor:
+        sensor_field = self.upsample_camera_field(camera_field)
+        meta_plane = self.adjoint_sasm_sensor(sensor_field)
+        obj_prop = torch.conj(self.u_s1) * meta_plane
+        obj_field = self.asmt.prop_w_kernel(U=obj_prop, ASM_kernel=torch.conj(self.kernel_obj))
+        if crop_to_object:
+            return torch_crop_center(obj_field, self.config.object_support_px)
+        return obj_field
+
     def resize_measurement_to_object(self, measurement: torch.Tensor) -> torch.Tensor:
         return F.interpolate(
             measurement,

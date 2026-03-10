@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 from pathlib import Path
 from typing import Any
@@ -107,11 +107,20 @@ class SyntheticPhaseDataset(Dataset):
         object_field = torch.polar(torch.ones_like(phase), phase)
 
         intensity = torch.empty(0)
+        camera_phase = torch.empty(0)
+        camera_real = torch.empty(0)
+        camera_imag = torch.empty(0)
         if self.config.materialize_measurements:
             if self.forward_model is None:
                 raise ValueError("forward_model is required when materialize_measurements=True")
             with torch.no_grad():
-                intensity = self.forward_model(phase.unsqueeze(0).unsqueeze(0).to(self.forward_model.aperture_obj.device))[0].cpu()
+                phase_batch = phase.unsqueeze(0).unsqueeze(0).to(self.forward_model.aperture_obj.device)
+                sensor_field = self.forward_model.forward_sensor_field(phase_batch)
+                intensity = self.forward_model.downsample_sensor(sensor_field)[0].cpu()
+                camera_field = self.forward_model.downsample_sensor_complex(sensor_field)[0].cpu()
+                camera_phase = torch.angle(camera_field)
+                camera_real = camera_field.real
+                camera_imag = camera_field.imag
             intensity = self._apply_noise(intensity, generator)
 
         return {
@@ -119,6 +128,9 @@ class SyntheticPhaseDataset(Dataset):
             "object_real": object_field.real.unsqueeze(0),
             "object_imag": object_field.imag.unsqueeze(0),
             "intensity": intensity,
+            "camera_phase": camera_phase,
+            "camera_real": camera_real,
+            "camera_imag": camera_imag,
             "metadata": {"seed": self.config.seed + index, "kind": kind},
         }
 
@@ -199,4 +211,3 @@ class SyntheticPhaseDataset(Dataset):
         if self.config.gaussian_noise_std > 0:
             noisy = noisy + torch.randn_like(noisy, generator=generator) * self.config.gaussian_noise_std
         return noisy.clamp_min(0.0)
-

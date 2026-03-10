@@ -23,6 +23,7 @@ import yaml
 from metacam.data.synthetic_phase_dataset import SyntheticPhaseDataset, SyntheticPhaseDatasetConfig
 from metacam.metrics.losses import tv_loss
 from metacam.nn.baselines import PhaseIntensityUNet
+from metacam.nn.direct_fullspeckle import FullSpeckleDirectPhaseNet
 from metacam.nn.physics_unrolled import PhysicsGuidedUnrolledNet
 from metacam.physics.phasecam_forward import (
     PhaseCamForwardModel,
@@ -173,6 +174,14 @@ def build_model(
             step_size_init=model_config.get("step_size_init", 0.25),
             proximal_scale_init=model_config.get("proximal_scale_init", 0.1),
         )
+    if model_type == "direct_fullspeckle":
+        return FullSpeckleDirectPhaseNet(
+            forward_model=forward_model,
+            sensor_base_channels=model_config.get("sensor_base_channels", 24),
+            sensor_depth=model_config.get("sensor_depth", 4),
+            object_base_channels=model_config.get("object_base_channels", 32),
+            object_depth=model_config.get("object_depth", 4),
+        )
     raise ValueError(f"Unsupported model_type: {model_type}")
 
 
@@ -253,26 +262,61 @@ def phase_metrics(prediction: torch.Tensor, target: torch.Tensor) -> dict[str, f
     }
 
 
+def predict_with_aux(model: nn.Module, measurement: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    if hasattr(model, "forward_with_aux"):
+        output = model.forward_with_aux(measurement)
+        if isinstance(output, dict):
+            if "phase" not in output:
+                raise KeyError("forward_with_aux output must contain a 'phase' entry.")
+            aux = {key: value for key, value in output.items() if key != "phase"}
+            return output["phase"], aux
+    prediction = model(measurement)
+    return prediction, {}
+
+
 def compute_loss_terms(
     prediction: torch.Tensor,
     target: torch.Tensor,
     measurement: torch.Tensor,
     forward_model: PhaseCamForwardModel,
     loss_config: dict[str, Any],
+    aux_outputs: dict[str, torch.Tensor] | None = None,
+    batch: dict[str, Any] | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor]:
     measurement_prediction = forward_model(prediction)
     phase_loss = periodic_phase_loss(prediction, target)
     meas_loss = F.mse_loss(measurement_prediction, measurement)
     tv_term = tv_loss(prediction, order=1)
+    sensor_phase_term = torch.zeros((), device=prediction.device)
+    camera_field_term = torch.zeros((), device=prediction.device)
+
+    if aux_outputs and batch is not None:
+        if "sensor_phase" in aux_outputs and "camera_phase" in batch:
+            sensor_phase_gt = batch["camera_phase"].to(prediction.device)
+            sensor_phase_term = periodic_phase_loss(aux_outputs["sensor_phase"], sensor_phase_gt)
+        if "camera_field" in aux_outputs and "camera_real" in batch and "camera_imag" in batch:
+            camera_field_gt = torch.complex(
+                batch["camera_real"].to(prediction.device),
+                batch["camera_imag"].to(prediction.device),
+            )
+            camera_field_pred = aux_outputs["camera_field"]
+            camera_field_term = (
+                F.mse_loss(camera_field_pred.real, camera_field_gt.real)
+                + F.mse_loss(camera_field_pred.imag, camera_field_gt.imag)
+            )
     total = (
         float(loss_config.get("phase", 1.0)) * phase_loss
         + float(loss_config.get("measurement", 0.25)) * meas_loss
         + float(loss_config.get("tv", 1e-4)) * tv_term
+        + float(loss_config.get("sensor_phase", 0.0)) * sensor_phase_term
+        + float(loss_config.get("camera_field", 0.0)) * camera_field_term
     )
     terms = {
         "phase_loss": phase_loss,
         "measurement_loss": meas_loss,
         "tv_loss": tv_term,
+        "sensor_phase_loss": sensor_phase_term,
+        "camera_field_loss": camera_field_term,
     }
     return total, terms, measurement_prediction
 
@@ -319,8 +363,16 @@ def train_model(
             target = batch["phase"].to(device)
 
             optimizer.zero_grad(set_to_none=True)
-            prediction = model(measurement)
-            loss, terms, _ = compute_loss_terms(prediction, target, measurement, forward_model, train_config["loss"])
+            prediction, aux_outputs = predict_with_aux(model, measurement)
+            loss, terms, _ = compute_loss_terms(
+                prediction,
+                target,
+                measurement,
+                forward_model,
+                train_config["loss"],
+                aux_outputs=aux_outputs,
+                batch=batch,
+            )
             loss.backward()
             if grad_clip_norm > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
@@ -389,6 +441,8 @@ def evaluate_model(
         "phase_loss": 0.0,
         "measurement_loss": 0.0,
         "tv_loss": 0.0,
+        "sensor_phase_loss": 0.0,
+        "camera_field_loss": 0.0,
         "wrapped_phase_mae": 0.0,
         "wrapped_phase_rmse": 0.0,
         "complex_correlation": 0.0,
@@ -404,7 +458,7 @@ def evaluate_model(
         _sync_device(device)
         t0 = time.perf_counter()
         with torch.enable_grad():
-            prediction = model(measurement)
+            prediction, aux_outputs = predict_with_aux(model, measurement)
             if refinement_steps > 0:
                 prediction, _ = run_iterative_phase_reconstruction(
                     forward_model=forward_model,
@@ -414,11 +468,20 @@ def evaluate_model(
                     tv_weight=refinement_tv_weight,
                     init_phase=prediction.detach(),
                 )
+                aux_outputs = {}
         _sync_device(device)
         runtime = time.perf_counter() - t0
 
         prediction = prediction.detach()
-        total, terms, measurement_prediction = compute_loss_terms(prediction, target, measurement, forward_model, loss_config)
+        total, terms, measurement_prediction = compute_loss_terms(
+            prediction,
+            target,
+            measurement,
+            forward_model,
+            loss_config,
+            aux_outputs=aux_outputs,
+            batch=batch,
+        )
         metrics = phase_metrics(prediction, target)
         batch_size = measurement.size(0)
         count += batch_size
@@ -427,6 +490,8 @@ def evaluate_model(
         accum["phase_loss"] += float(terms["phase_loss"].detach().cpu()) * batch_size
         accum["measurement_loss"] += float(terms["measurement_loss"].detach().cpu()) * batch_size
         accum["tv_loss"] += float(terms["tv_loss"].detach().cpu()) * batch_size
+        accum["sensor_phase_loss"] += float(terms["sensor_phase_loss"].detach().cpu()) * batch_size
+        accum["camera_field_loss"] += float(terms["camera_field_loss"].detach().cpu()) * batch_size
         accum["wrapped_phase_mae"] += metrics["wrapped_phase_mae"] * batch_size
         accum["wrapped_phase_rmse"] += metrics["wrapped_phase_rmse"] * batch_size
         accum["complex_correlation"] += metrics["complex_correlation"] * batch_size
@@ -505,7 +570,8 @@ def evaluate_iterative_baseline(
         init_phase = None
         if init_model is not None:
             with torch.enable_grad():
-                init_phase = init_model(measurement).detach()
+                init_phase, _ = predict_with_aux(init_model, measurement)
+                init_phase = init_phase.detach()
         prediction, runtime = run_iterative_phase_reconstruction(
             forward_model=forward_model,
             measurement=measurement,
@@ -608,7 +674,7 @@ def _run_model_inference(
     refinement_tv_weight: float = 1e-4,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     with torch.enable_grad():
-        prediction = model(measurement)
+        prediction, _ = predict_with_aux(model, measurement)
         if refinement_steps > 0:
             prediction, _ = run_iterative_phase_reconstruction(
                 forward_model=forward_model,

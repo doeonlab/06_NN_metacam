@@ -37,5 +37,8 @@ def test_synthetic_dataset_is_deterministic_and_shapes_match():
     sample_b = dataset[0]
     assert sample_a["phase"].shape == (1, reduced.object_support_px, reduced.object_support_px)
     assert sample_a["intensity"].shape == (1, reduced.measurement_window_px, reduced.measurement_window_px)
+    assert sample_a["camera_phase"].shape == sample_a["intensity"].shape
+    assert sample_a["camera_real"].shape == sample_a["intensity"].shape
+    assert sample_a["camera_imag"].shape == sample_a["intensity"].shape
     assert torch.allclose(sample_a["phase"], sample_b["phase"])
     assert torch.allclose(sample_a["intensity"], sample_b["intensity"])

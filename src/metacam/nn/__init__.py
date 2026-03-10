@@ -1,6 +1,7 @@
 """Neural reconstruction scaffold modules."""
 
 from metacam.nn.baselines import PhaseIntensityUNet
+from metacam.nn.direct_fullspeckle import FullSpeckleDirectPhaseNet
 from metacam.nn.phasecam_realscale import (
     PhaseCamRealScaleConfig,
     PhaseCamRealScaleResult,
@@ -29,6 +30,7 @@ from metacam.nn.train_utils import (
 )
 
 __all__ = [
+    "FullSpeckleDirectPhaseNet",
     "PhaseIntensityUNet",
     "PhaseCamRealScaleConfig",
     "PhaseCamRealScaleResult",
